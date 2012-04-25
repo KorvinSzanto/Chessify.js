@@ -1,53 +1,9 @@
 (function () {
     $.fn.chessify = function (settings) {
         var ob = {};
-        ob.pieces = {
-            white: [
-                {type:'queen',coords:[1, 4],active:1,opacity:1},
-                {type:'king',coords:[1, 5],active:1,opacity:1},
-                {type:'bishop',coords:[1, 6],active:1,opacity:1},
-                {type:'bishop',coords:[1, 3],active:1,opacity:1},
-                {type:'knight',coords:[1, 7],active:1,opacity:1},
-                {type:'knight',coords:[1, 2],active:1,opacity:1},
-                {type:'rook',coords:[1, 8],active:1,opacity:1},
-                {type:'rook',coords:[1, 1],active:1,opacity:1},
-                {type:'pawn',coords:[2, 1],active:1,opacity:1},
-                {type:'pawn',coords:[2, 2],active:1,opacity:1},
-                {type:'pawn',coords:[2, 3],active:1,opacity:1},
-                {type:'pawn',coords:[2, 4],active:1,opacity:1},
-                {type:'pawn',coords:[2, 5],active:1,opacity:1},
-                {type:'pawn',coords:[2, 6],active:1,opacity:1},
-                {type:'pawn',coords:[2, 7],active:1,opacity:1},
-                {type:'pawn',coords:[2, 8],active:1,opacity:1}
-            ],
-            black: [
-                {type:'queen',coords:[8, 4],active:1,opacity:1},
-                {type:'king',coords:[8, 5],active:1,opacity:1},
-                {type:'bishop',coords:[8, 6],active:1,opacity:1},
-                {type:'bishop',coords:[8, 3],active:1,opacity:1},
-                {type:'knight',coords:[8, 7],active:1,opacity:1},
-                {type:'knight',coords:[8, 2],active:1,opacity:1},
-                {type:'rook',coords:[8, 8],active:1,opacity:1},
-                {type:'rook',coords:[8, 1],active:1,opacity:1},
-                {type:'pawn',coords:[7, 1],active:1,opacity:1},
-                {type:'pawn',coords:[7, 2],active:1,opacity:1},
-                {type:'pawn',coords:[7, 3],active:1,opacity:1},
-                {type:'pawn',coords:[7, 4],active:1,opacity:1},
-                {type:'pawn',coords:[7, 5],active:1,opacity:1},
-                {type:'pawn',coords:[7, 6],active:1,opacity:1},
-                {type:'pawn',coords:[7, 7],active:1,opacity:1},
-                {type:'pawn',coords:[5, 7],active:1,opacity:1}
-            ]
-        };
-        ob.dangerZone = [];
-        ob.positions = {};
-        ob.highlights = [
-            {
-                color: [255,255,255],
-                alpha: 0.7,
-                coords: [5,5]
-            }
-        ];
+        ob.canvas = $(this).get(0);
+        ob.moving = [];
+        ob.context = ob.canvas.getContext('2d');
         ob.settings = {
             dimensions: 50,
             colorBlack: "#333333",
@@ -80,332 +36,204 @@
         $.each(settings, function (setting, value) {
             ob.settings[setting] = value;
         });
-
-        ob.movingPiece = false;
-        ob.board = $(this).get(0);
-        ob.context = ob.board.getContext('2d');
-        ob.methods = {
-            init: function () {
-                ob.board.width = ob.board.width;
-                ob.methods.drawBoard();
-                ob.methods.drawPieces();
-                ob.methods.drawHighlights();
-                if (ob.movingPiece !== false) {
-                    ob.methods.pieceMotion();
-                }
-            },
-            squareStart: function (coords) {
-                return [coords[0] * ob.settings.dimensions + 1,coords[1] * ob.settings.dimensions + 1];                
-            },
-            drawBoard: function () {
-                ob.context.fillStyle = ob.settings.colorBlack;
-                ob.context.fillRect(0,0,ob.settings.dimensions * 8+2, ob.settings.dimensions * 8+2);
-                for (x = 0; x < 8; x++) {
-                    for (y = 0; y < 8; y++) {
-                        var white = (ob.settings.view?'colorWhite':'colorBlack'),
-                            black = (!ob.settings.view?'colorWhite':'colorBlack'),
-                            coords = ob.methods.squareStart([x,y]);
-
-                        ob.context.fillStyle = (x % 2 ? ob.settings[(y % 2 ? white : black)] : ob.settings[(y % 2 ? black : white)]);
-                        ob.context.fillRect(coords[0], coords[1], ob.settings.dimensions, ob.settings.dimensions);
+        var coordinates = function() {
+            this.list = [];
+            this.get = function(x,y) {
+                for (i=0;i<this.list.length;i++) {
+                    if (this.list[i].is(x,y)) {
+                        return this.list[i];
                     }
                 }
-            },
-            drawHighlights: function () {
-                $.each(ob.highlights, function(id,highlight) {
-                    coords = ob.methods.squareStart(highlight.coords);
-                    c = highlight.color;
-                    ob.context.fillStyle = "rgba("+c[0]+','+c[1]+','+c[2]+','+highlight.alpha+')';
-                    ob.context.fillRect(coords[0], coords[1], ob.settings.dimensions, ob.settings.dimensions);
-                });
-            },
-            highlightMoves: function() {
-                
-            },
-            drawPieces: function () {
-                ob.positions = {};
-                $.each(ob.pieces, function (tid, type) {
-                    $.each(type, function (id, piece) {
-                        piece.color = tid;
-                        if (piece.img === undefined) {
-                            piece.img = ob.settings.images[tid][piece.type];
-                        }
-                        if (piece.active) {
-                            if (!piece.image) {
-                                piece.image = new Image();
-                                piece.image.src = piece.img;
-                            }
-                            ob.positions[ob.methods.chessCoords(piece.coords)] = [tid,piece];
-                            if (!piece.realCoords) {
-                                piece.realCoords = ob.methods.realCoords(piece.coords);
-                            }
-                            ob.context.drawImage(piece.image,piece.realCoords[0],piece.realCoords[1],ob.settings.dimensions,ob.settings.dimensions);
-                        }
-                    });
-                });
-                ob.methods.parseDanger();
-                ob.methods.parseMoves();
-            },
-            parseDanger: function () {
-                ob.dangerZone = [];
-                $.each(ob.pieces, function (color,array) {
-                    $.each(array, function (id,piece) {
-                        switch (piece.type) {
-                            case 'pawn':
-                                attackPoints = [
-                                    ob.methods.move(piece,'up left',1),
-                                    ob.methods.move(piece,'up right',1)
-                                ];
-                                break;
-                            case 'knight':
-                                attackPoints = ob.methods.allKnightMoves(piece);
-                                break;
-                            case 'bishop':
-                                attackPoints = ob.methods.allDiagonalMoves(piece);
-                                break;
-                            case 'rook':
-                                attackPoints = ob.methods.allStraightMoves(piece);
-                                break;
-                            case 'queen':
-                                attackPoints = ob.methods.allDiagonalMoves(piece).concat(
-                                               ob.methods.allStraightMoves(piece));
-                                break;
-                            case 'king':
-                                attackPoints = [
-                                    ob.methods.move(piece,'up',1),
-                                    ob.methods.move(piece,'down',1),
-                                    ob.methods.move(piece,'left',1),
-                                    ob.methods.move(piece,'right',1),
-                                    ob.methods.move(piece,'up left',1),
-                                    ob.methods.move(piece,'down right',1),
-                                    ob.methods.move(piece,'down left',1),
-                                    ob.methods.move(piece,'up right',1),
-                                ];
-                                break;
-                        }
-                        $.each(attackPoints, function(id,coords) {
-                            if (ob.methods.isRealCoords(coords)) {
-                                ob.dangerZone.push(coords);
-                            }
-                        });
-                    });
-                });
-            },
-            changeView: function () {
-                ob.settings.view = (!ob.settings.view);
-            },
-            parseMoves: function () {
-                $.each(ob.pieces, function (color,array) {
-                    $.each(array, function (id,piece) {
-                        piece.moves = [];
-                        if (piece.type == 'pawn') {
-                            // Double jump
-                            ycheck = (color == 'white' ? 2 : 7);
-                            if (piece.coords[0] == ycheck) {
-                                fsCoords = ob.methods.move(piece,'up',1);
-                                ssCoords = ob.methods.move(piece,'up',2);
-                                firstSquare = ob.methods.chessCoords(fsCoords);
-                                secondSquare = ob.methods.chessCoords(ssCoords);
-                                if (typeof ob.positions[firstSquare]  == 'undefined' &&
-                                    typeof ob.positions[secondSquare] == 'undefined') {
-                                    piece.moves.push(ssCoords);
-                                    piece.moves.push(fsCoords);
-                                }
-                            }
-                        }
-                    });
-                });
-            },
-            allDiagonalMoves: function (piece) {
-                if (typeof piece.coords == 'object') {
-                    var coords = piece.coords;
-                } else {
-                    var coords = piece;
+                return false;
+            }
+            this.draw = function() {
+                for(i=0;i<this.list.length;i++) {
+                    this.list[i].draw();
                 }
-                var x = coords[0], y = coords[1], out = [];
-                
-                var i = 0;
-                while (++i < 8) {
-                    out.push([x+i,y+i]);
-                    out.push([x-i,y+i]);
-                    out.push([x-i,y-i]);
-                    out.push([x+i,y-i]);
-                }
-                return out;
-            },
-            allStraightMoves: function (piece) {
-                if (typeof piece.coords == 'object') {
-                    var coords = piece.coords;
-                } else {
-                    var coords = piece;
-                }
-                var x = coords[0], y = coords[1], out = [];
-                
-                var i = 0;
-                while (++i < 8) {
-                    out.push([x,y-i]);
-                    out.push([x,y+i]);
-                    out.push([x-i,y]);
-                    out.push([x+i,y]);
-                }
-                return out;
-            },
-            allKnightMoves: function (piece) {
-                if (typeof piece.coords == 'object') {
-                    var coords = piece.coords;
-                } else {
-                    var coords = piece;
-                }
-                var out = [],
-                    vert = ['up','down'],
-                    hori = ['left','right'];
-                    
-                $.each(vert,function(id,vdir){
-                    $.each(hori,function(id,hdir){
-                        out.push(ob.methods.moveKnight(coords,vdir+' '+hdir));
-                        out.push(ob.methods.moveKnight(coords,hdir+' '+vdir));
-                    });
-                });
-                return out;
-            },
-            moveKnight: function (piece, dir, move) {
-                if (typeof piece.coords == 'object') {
-                    var coords = piece.coords;
-                    if (piece.color == 'black') {
-                        dir.replace('up','~').replace('down','up').replace('~','down');
-                    }
-                } else {
-                    var coords = piece;
-                    move = false;
-                }
-                switch (dir) {
-                    case 'up left':
-                        out = [coords[0] + 2,coords[1] - 1];
-                        break;
-                    case 'up right':
-                        out = [coords[0] + 2,coords[1] + 1];
-                        break;
-                    case 'down left':
-                        out = [coords[0] - 2,coords[1] - 1];
-                        break;
-                    case 'down right':
-                        out = [coords[0] - 2,coords[1] + 1];
-                        break;
-                    case 'left up':
-                        out = [coords[0] + 1,coords[1] - 2];
-                        break;
-                    case 'right up':
-                        out = [coords[0] + 1,coords[1] + 2];
-                        break;
-                    case 'left down':
-                        out = [coords[0] - 1,coords[1] - 2];
-                        break;
-                    case 'right down':
-                        out = [coords[0] - 1,coords[1] + 2];
-                        break;
-                }
-                if (move === true) {
-                    ob.methods.movePiece(piece,out);
-                }
-                return out;
-            },
-            move: function (piece, dir, amnt, move) {
-                if (typeof piece.coords == 'object') {
-                    if (piece.type == 'knight') {
-                        return ob.methods.moveKnight(piece,dir,move);
-                    }
-                    var coords = piece.coords;
-                    if (piece.color == 'black') {
-                        amnt *= -1;
-                        dir.replace('right','~').replace('left','right').replace('~','left');
-                    }
-                } else {
-                    var coords = piece;
-                    move = false;
-                }
-                var out = coords;
-                switch (dir) {
-                    case 'up':
-                        out = [coords[0] + amnt,coords[1]];
-                        break;
-                    case 'down':
-                        out = [coords[0] - amnt,coords[1]];
-                        break;
-                    case 'right':
-                        out = [coords[0],coords[1] + amnt];
-                        break;
-                    case 'left':
-                        out = [coords[0],coords[1] - amnt];
-                        break;
-                    case 'up left':
-                        out = [coords[0] + amnt,coords[1] - amnt];
-                        break;
-                    case 'up right':
-                        out = [coords[0] + amnt,coords[1] + amnt];
-                        break;
-                    case 'down left':
-                        out = [coords[0] - amnt,coords[1] - amnt];
-                        break;
-                    case 'down right':
-                        out = [coords[0] - amnt,coords[1] + amnt];
-                        break;
-                }
-                if (move === true) {
-                    ob.methods.movePiece(piece,out);
-                }
-                return out;
-            },
-            chessCoords: function (coords) {
-                return 'abcdefgh'[coords[0]-1]+','+coords[1];
-            },
-            isRealCoords: function (coords) {
-                return (ob.methods.isRealCoord(coords[0]) && ob.methods.isRealCoord(coords[1]));
-            },
-            isRealCoord: function (coord) {
-                return (!(coord > 8 || coord < 1));
-            },
-            realCoords: function (coords) {
-                var alphaMap = {a:1,b:2,c:3,d:4,e:5,f:6,g:7,h:8};
-                return (typeof coords == 'object') ? [
-                    Math.abs((coords[0]-1)*ob.settings.dimensions - (ob.settings.view?ob.settings.dimensions*7:0)) + 1,
-                    (coords[1]-1)*ob.settings.dimensions + 1
-                ] : alphaMap[coords.split(',')[1]]+','+coords.split(',')[0];
-            },
-            movePiece: function (piece,newCoords) {
-                realCoords = ob.methods.realCoords(newCoords);
-                ob.movingPiece = [
-                    [
-                        (realCoords[0] - piece.realCoords[0]) / ob.settings.motionFrames,
-                        (realCoords[1] - piece.realCoords[1]) / ob.settings.motionFrames
-                    ],
-                    realCoords,
-                    piece,
-                    newCoords
-                ];
-            },
-            pieceMotion: function () {
-                if (ob.movingPiece == false) { 
-                    return;
-                }
-                speed = ob.movingPiece[0];
-                piece = ob.movingPiece[2];
-                coords = ob.movingPiece[1];
-                if (Math.round(piece.realCoords[0]) == Math.round(coords[0]) &&
-                    Math.round(piece.realCoords[1]) == Math.round(coords[1])) {
-                    piece.coords = ob.movingPiece[3];
-                    ob.movingPiece = false;
-                    return;
-                }
-                piece.realCoords[0] += speed[0];
-                piece.realCoords[1] += speed[1];
-                
+            }
+            this.add = function(x,y) {
+                this.list[this.list.length] = new coordinate(x,y);
+                return this.get(x,y);
             }
         };
-        ob.methods.init();
-        ob.timer = setInterval(ob.methods.init,1000/60);
-        console.log(ob);
+        var pieces = function() {
+            this.list = [];
+            this.get = function(x,y) {
+                for (i=0;i<this.list.length;i++) {
+                    if (this.list[i].coords.is(x,y)) {
+                        return this.list[i];
+                    }
+                }
+                return false;
+            };
+            this.draw = function() {
+                for(i=0;i<this.list.length;i++) {
+                    this.list[i].draw();
+                }
+            }
+            this.add = function(type,x,y,active,color) {
+                this.list[this.list.length] = new pieceTypes[type](x,y,active,color);
+                return this.get(x,y);
+            }
+        };
+        var move = function(piece,coords,frames) {
+            this.piece = piece;
+            this.xstep = (coords.realX()-piece.realX)/frames;
+            this.ystep = (coords.realY()-piece.realY)/frames;
+            this.active = true;
+            this.destination = coords;
+            this.step = function() {
+                if (Math.round(coords.realX()-piece.realX) == 0 &&
+                    Math.round(coords.realY() - this.piece.realY) == 0) {
+                    this.active = false;
+                } else {
+                    this.piece.realX+=this.xstep;
+                    this.piece.realY+=this.ystep;
+                }
+            }
+        };
+        var pieceTypes = {
+            pawn : function(x,y, active, color) {
+                this.coords = ob.coordinates.get(x,y);
+                this.color = (color);
+                this.realX = this.coords.realX();
+                this.realY = this.coords.realY();
+                this.type = 'pawn';
+                this.colorName = (color ? 'white' : 'black');
+                this.image = new Image();
+                this.image.onload = this.draw;
+                this.image.src = ob.settings.images[this.colorName]['pawn'];
+                this.active = (active ? active : 1);
+                this.move = function (direction, amount, act) {
+                    if (!this.color) amount *= -1;
+                    var directions = direction.split(' '),
+                        x = this.coords.getX(),
+                        y = this.coords.getY();
+                    for (i=0;i<directions.length;i++) {
+                        switch (directions[i]) {
+                            case 'up':
+                                y+=amount;
+                                break;
+                            case 'down':
+                                y-=amount;
+                                break;
+                            case 'left':
+                                x-=amount;
+                                break;
+                            case 'right':
+                                x+=amount;
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                    var coordinate = ob.coordinates.get(x,y);
+                    if (act === true) {
+                        this.doMove(coordinate);
+                    }
+                    return coordinate;
+                };
+                this.doMove = function (newCoordinates) {
+                    this.coords.piece = false;
+                    this.coords = newCoordinates;
+                    this.coords.piece = this;
+                    ob.moving[ob.moving.length] = new move(this,newCoordinates,75);
+                };
+                this.attack = function () {
+                    var canAttack = [];
+                    if (this.move('up left',1) instanceof coordinate) {
+                        canAttack[canAttack.length] = this.move('up left',1);
+                    }
+                    if (this.move('up right',1) instanceof coordinate) {
+                        canAttack[canAttack.length] = this.move('up right',1);
+                    }
+                    return canAttack;
+                };
+                this.draw = function() {
+                    ob.context.drawImage(
+                        this.image,
+                        this.realX,
+                        this.realY,
+                        ob.settings.dimensions,
+                        ob.settings.dimensions
+                    );
+
+                }
+                this.coords.piece = this;
+            }
+        };
+        var coordinate = function(x,y) {
+            this.X = x;
+            this.Y = y;
+            this.piece = false;
+            
+            this.isValid = function() {
+                return (this.X > 0 && this.Y > 0 && this.x < 9 && this.y < 9);
+            }
+            this.is = function(x,y) {
+                return (this.X == x && this.Y == y);
+            }
+            this.getY = function() {
+                return this.Y;
+            }
+            this.getX = function() {
+                return this.X;
+            }
+            this.getChessX = function() {
+                return 'abcdefgh'[this.X];
+            }
+            this.color = function() {
+                return this.X % 2 ? (this.Y % 2 ? 0 : 1) : (this.Y % 2 ? 1 : 0);
+            }
+            this.realX = function() {
+                return (this.X-1) * ob.settings.dimensions;
+            }
+            this.realY = function() {
+                return ob.settings.dimensions * 7 - ((this.Y-1) * ob.settings.dimensions);
+            }
+            this.isOccupied = function() {
+                return this.piece;
+            }
+            this.draw = function() {
+                ob.context.fillStyle = ob.settings['color'+(this.color() ? 'White' : 'Black')];
+                ob.context.fillRect(this.realX(), this.realY(), ob.settings.dimensions, ob.settings.dimensions);
+            }
+        }
+        var chessBoard = function() {
+            this.draw = function() {
+                ob.coordinates.draw();
+                ob.pieces.draw();
+            };
+            this.setup = function() {
+                for (x=1; x < 9; x++) {
+                    for (y=1; y < 9; y++) {
+                        var square = ob.coordinates.add(x,y);
+                    }
+                }
+                for(x=1;x<9;x++) {
+                    ob.pieces.add('pawn',x,'2',1,1);
+                    ob.pieces.add('pawn',x,'7',1,0);
+                }
+            };
+            this.step = function() {
+                ob.chessBoard.draw();
+                var newlist = [];
+                for(i=0;i<ob.moving.length;i++) {
+                    ob.moving[i].step();
+                    if (ob.moving[i].active) {
+                        newlist[newlist.length] = ob.moving[i];
+                    }
+                }
+                ob.moving = newlist;
+            }
+        }
+        ob.coordinates = new coordinates();
+        ob.pieces = new pieces();
+        ob.chessBoard = new chessBoard();
+        ob.chessBoard.setup();
+        this.frames = setInterval(ob.chessBoard.step, (1000 / 60));
         return ob;
-    };
+    }
 })(jQuery);
 $(function(){
     chessBoard = $('canvas').chessify({
